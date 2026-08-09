@@ -1,0 +1,703 @@
+{
+  "name": "Searchable Meeting Memory System",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting-memory-intake",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -576,
+        -16
+      ],
+      "id": "4a8830f0-7419-4128-891b-f9be314433a6",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = new Date();\nconst day = String(d.getDate()).padStart(2, '0');\nconst month = String(d.getMonth() + 1).padStart(2, '0');\nconst year = String(d.getFullYear()).slice(-2); // Gets last 2 digits of year (e.g., '26')\n\nreturn { json: { formattedDate: `${day}${month}${year}` } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        -16
+      ],
+      "id": "42d42f4c-da72-4900-b26f-cee5c2819772",
+      "name": "date formatter"
+    },
+    {
+      "parameters": {
+        "name": "={{ $now.toFormat('yyyy-LL-dd_HH-mm-ss') }}-meeting.txt",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_DRIVE_FOLDER_ID",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        64,
+        -16
+      ],
+      "id": "b1ccab24-df3f-43de-a009-e21a3d232568",
+      "name": "Upload file"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Read the following meeting transcript and provide a 3-bullet summary of key decisions:\n\n{{ $('Edit Fields').item.json.transcript }}\n\nOutput only the summary. Do not add a greeting. The message goes directly to Slack."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        -16
+      ],
+      "id": "fbee6b11-92b4-4db0-a5e5-22a59a4dd1b4",
+      "name": "summary of key decisions"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "=📝 New Meeting Summary: {{ $json.meetingTitle }}\\n\\n{{ $json.summary }}\\n\\nAre there any stakeholders who need to be informed on specific parts of this meeting? Tag me and let me know!",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        496,
+        -16
+      ],
+      "id": "3c62b4d8-682f-45a3-b3ae-2cc23ae0b205",
+      "name": "send summary to team"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyHour"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_DRIVE_FOLDER_ID",
+          "mode": "id"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        864,
+        16
+      ],
+      "id": "dcecdbc8-206c-46da-8084-714d936f8c0d",
+      "name": "Google Drive Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1056,
+        16
+      ],
+      "id": "166f789c-97e8-4463-a575-28761774ab6f",
+      "name": "Download file"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "meeting-memory",
+          "mode": "list",
+          "cachedResultName": "meeting-memory"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        1264,
+        16
+      ],
+      "id": "d4d9df69-183a-4a51-afca-0d293e8b5b02",
+      "name": "Pinecone Vector Store"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1232,
+        256
+      ],
+      "id": "8b0f0838-d709-4fee-8f03-c601063836d9",
+      "name": "Embeddings OpenAI"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "date",
+                "value": "={{ $('Google Drive Trigger').item.json.name.split('-')[0] }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1392,
+        176
+      ],
+      "id": "2e24b7c5-642b-425f-9391-8ae664ad6ed2",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "chunkOverlap": 200,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1408,
+        352
+      ],
+      "id": "585dfe20-b47e-4af9-a056-44bba900db7b",
+      "name": "Recursive Character Text Splitter"
+    },
+    {
+      "parameters": {
+        "trigger": [
+          "any_event"
+        ],
+        "channelId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        320
+      ],
+      "id": "577e4c70-bc58-4d75-a9db-98e75234e4aa",
+      "name": "Slack Trigger"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "04e6c882-2765-4505-8198-ce8802e8cf73",
+              "leftValue": "={{ $json.body.event.bot_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notExists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -336,
+        320
+      ],
+      "id": "7d1c8edc-d58e-4a6c-af1f-77b2336bdf32",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=this is the message sent to you:{{ $('Slack Trigger').item.json.blocks[0].elements[0].elements[0].text }}",
+        "options": {
+          "systemMessage": "You are an expert AI Meeting Archivist. Your primary job is to answer questions about past team meetings using your Pinecone vector database tool.\n\nCRITICAL ROUTING RULES:\n\nWhen a user asks you a question directly, always answer them using your natural chat response (your direct text output).\n\nDo NOT use your attached Slack tool to reply to the person currently talking to you.\n\nONLY use the attached Slack tool if the user explicitly commands you to send notes, alerts, or summaries to someone else or another channel (e.g., 'Send this to @Sarah' or 'Post the updates to the marketing channel')"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -32,
+        304
+      ],
+      "id": "5e3da2d3-e40d-4bbb-beaf-2b550d24f4ae",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -64,
+        528
+      ],
+      "id": "9a8e88cb-619b-42b8-8106-8f84b765dab2",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Use this tool to search through all past meeting transcripts to find answers about dates, projects, decisions, and discussions.",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "meeting-memory",
+          "mode": "list",
+          "cachedResultName": "meeting-memory"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        304,
+        496
+      ],
+      "id": "ac817fdb-f453-4ba5-9138-a991b51d02c3",
+      "name": "Pinecone Vector Store1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        400,
+        592
+      ],
+      "id": "03f6c64e-ce4f-403b-98b7-3b3996b7e01c",
+      "name": "Embeddings OpenAI1"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $execution.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        112,
+        576
+      ],
+      "id": "bdc8eaa6-deb0-48da-ac4a-827d74fdcb27",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "ONLY invoke this tool if the user explicitly asks you to forward information, notify, or send a message to a DIFFERENT person or a DIFFERENT channel. Never use this tool to respond to the active user's direct question.",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Channel', ``, 'string') }}",
+          "mode": "id"
+        },
+        "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message_Text', ``, 'string') }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slackTool",
+      "typeVersion": 2.5,
+      "position": [
+        208,
+        576
+      ],
+      "id": "8364ce6d-b6bd-4862-880d-d684c87f278e",
+      "name": "Send a message in Slack"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Slack Trigger').item.json.channel }}",
+          "mode": "id"
+        },
+        "text": "={{ $json.output }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        336,
+        304
+      ],
+      "id": "8bb4e664-a453-48eb-9add-ce165b1f5c2a",
+      "name": "Send a message"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 240,
+        "width": 1248,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -608,
+        -32
+      ],
+      "typeVersion": 1,
+      "id": "97e17130-37aa-43ed-bd7b-416f7da1c71e",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 512,
+        "width": 960,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        800,
+        -16
+      ],
+      "typeVersion": 1,
+      "id": "d4832e4f-6b75-47fc-93b0-df254b92cc0b",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 496,
+        "width": 1360,
+        "color": "#4D4242"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        272
+      ],
+      "typeVersion": 1,
+      "id": "0763f7de-cd4a-4bfe-b5d8-79a2041fbb4a",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "transcript",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -96,
+        -16
+      ],
+      "id": "929f3753-24be-4fcb-aa7e-c12213c4e86d",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4eb794f1-429b-447a-a8d6-14e06cddb7ec",
+              "name": "transcript",
+              "value": "={{ $('Webhook').item.json.body.transcript }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -272,
+        -16
+      ],
+      "id": "63891f90-1da0-47a0-965e-76f8c382678c",
+      "name": "Edit Fields"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "date formatter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "date formatter": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload file": {
+      "main": [
+        [
+          {
+            "node": "summary of key decisions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "summary of key decisions": {
+      "main": [
+        [
+          {
+            "node": "send summary to team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message in Slack": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}
